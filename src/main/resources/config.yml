@@ -1,0 +1,5 @@
+# Please don't modify this file, it contains all the information about variables.
+variables:
+  __version: '1.0.0'
+  __pi: '3.14159265'
+  __creator: 'thepowderguy'
