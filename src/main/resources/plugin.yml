@@ -1,0 +1,18 @@
+name: CommandBlockScripting
+main: com.gmail.brandonli2010.CommandBlockScripting.CommandBlockScripting
+author: thepowderguy
+description: This implements a scripting language for commandblocks.
+website: 'http://example.com'
+version: 0.2.0 BETA
+commands:
+  script:
+    usage: /script <script>
+    description: Execute a script. Only for console/command blocks
+  stopscripts:
+    usage: /stopscripts
+    description: Stop all scripts.
+    permission: commandblockscripting.stopscripts
+  input:
+    usage: /input <string>
+    description: Input a string.
+    permission: commandblockscripting.input
