@@ -1,0 +1,14 @@
+package com.gmail.brandonli2010.CommandBlockScripting;
+
+public class InvalidScriptException extends RuntimeException {
+	private static final long serialVersionUID = 1L;
+	private String description;
+	protected InvalidScriptException(String msg)
+	{
+		this.description = msg;
+	}
+	protected String getDescription()
+	{
+		return this.description;
+	}
+}
