@@ -2,7 +2,7 @@ name: CommandBlockScripting
 main: com.gmail.brandonli2010.CommandBlockScripting.CommandBlockScripting
 author: thepowderguy
 description: This implements a scripting language for commandblocks.
-website: 'http://example.com'
+website: 'https://github.com/thepowderguy/CommandBlockScripting'
 version: 0.2.0 BETA
 commands:
   script:
