@@ -232,8 +232,7 @@ public class Script {
 	{
 		StringBuilder tmpvar = new StringBuilder("");
 		boolean invar = false;
-		Stack<ScriptVariable> varstack = new Stack<ScriptVariable>();;
-		Bukkit.broadcastMessage(str);
+		Stack<ScriptVariable> varstack = new Stack<ScriptVariable>();
 		for (int ind = 0; ind < str.length(); ind ++)
 		{
 			if (str.charAt(ind) == '%')
