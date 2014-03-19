@@ -1,20 +1,19 @@
 package com.gmail.brandonli2010.CommandBlockScripting;
 
 public class ScriptVariable {
+
 	protected ScriptVariable(String val)
 	{
 		this.value = val;
 	}
+
 	String value;
-	protected static ScriptVariable performOp(char op, ScriptVariable b, ScriptVariable a)
+
+	protected static ScriptVariable performOp(char op, ScriptVariable b, ScriptVariable a) throws IllegalArgumentException, NullPointerException
 	{
 		if ((a.value == null) | (b.value == null))
 		{
-			return new ScriptVariable("");
-		}
-		if (a.value.equals("") | b.value.equals(""))
-		{
-			return new ScriptVariable("");
+			throw new NullPointerException();
 		}
 		int type = 0;
 		Object typecheck = ScriptVariable.typeof(a.value, b.value);
@@ -35,11 +34,11 @@ public class ScriptVariable {
 		case '+':
 			if (type == 1)
 			{
-				return new ScriptVariable((Integer.valueOf(a.value) + Integer.valueOf(b.value)) + "");
+				return new ScriptVariable(String.valueOf(Integer.valueOf(a.value) + Integer.valueOf(b.value)));
 			}
 			if (type == 2)
 			{
-				return new ScriptVariable((Double.valueOf(a.value) + Double.valueOf(b.value)) + "");
+				return new ScriptVariable(String.valueOf(Double.valueOf(a.value) + Double.valueOf(b.value)));
 			}
 			if (type == 3)
 			{
@@ -48,11 +47,11 @@ public class ScriptVariable {
 		case '-':
 			if (type == 1)
 			{
-				return new ScriptVariable((Integer.valueOf(a.value) - Integer.valueOf(b.value)) + "");
+				return new ScriptVariable(String.valueOf(Integer.valueOf(a.value) - Integer.valueOf(b.value)));
 			}
 			if (type == 2)
 			{
-				return new ScriptVariable((Double.valueOf(a.value) - Double.valueOf(b.value)) + "");
+				return new ScriptVariable(String.valueOf(Double.valueOf(a.value) - Double.valueOf(b.value)));
 			}
 			if (type == 3)
 			{
@@ -61,11 +60,11 @@ public class ScriptVariable {
 		case '*':
 			if (type == 1)
 			{
-				return new ScriptVariable((Integer.valueOf(a.value) * Integer.valueOf(b.value)) + "");
+				return new ScriptVariable(String.valueOf(Integer.valueOf(a.value) * Integer.valueOf(b.value)));
 			}
 			if (type == 2)
 			{
-				return new ScriptVariable((Double.valueOf(a.value) * Double.valueOf(b.value)) + "");
+				return new ScriptVariable(String.valueOf(Double.valueOf(a.value) * Double.valueOf(b.value)));
 			}
 			if (type == 3)
 			{
@@ -74,11 +73,37 @@ public class ScriptVariable {
 		case '/':
 			if (type == 1)
 			{
-				return new ScriptVariable((Integer.valueOf(a.value) / Integer.valueOf(b.value)) + "");
+				return new ScriptVariable(String.valueOf(Integer.valueOf(a.value) / Integer.valueOf(b.value)));
 			}
 			if (type == 2)
 			{
-				return new ScriptVariable((Double.valueOf(a.value) / Double.valueOf(b.value)) + "");
+				return new ScriptVariable(String.valueOf(Double.valueOf(a.value) / Double.valueOf(b.value)));
+			}
+			if (type == 3)
+			{
+				return new ScriptVariable("");
+			}
+		case '%':
+			if (type == 1)
+			{
+				return new ScriptVariable(String.valueOf(Integer.valueOf(a.value) % Integer.valueOf(b.value)));
+			}
+			if (type == 2)
+			{
+				return new ScriptVariable(String.valueOf(Double.valueOf(a.value) % Double.valueOf(b.value)));
+			}
+			if (type == 3)
+			{
+				return new ScriptVariable("");
+			}
+		case '^':
+			if (type == 1)
+			{
+				return new ScriptVariable(String.valueOf(Integer.valueOf(a.value) ^ Integer.valueOf(b.value)));
+			}
+			if (type == 2)
+			{
+				return new ScriptVariable(String.valueOf(Math.pow(Double.valueOf(a.value), Double.valueOf(b.value))));
 			}
 			if (type == 3)
 			{
@@ -122,7 +147,7 @@ public class ScriptVariable {
 				{ return new ScriptVariable("1"); }
 				else { return new ScriptVariable("0"); }
 			}
-		case '^':
+		case '~':
 			if (type == 1)
 			{
 				if ((Integer.valueOf(a.value) != 0) ^ (Integer.valueOf(b.value) != 0))
@@ -179,6 +204,18 @@ public class ScriptVariable {
 				{ return new ScriptVariable("1"); }
 				else { return new ScriptVariable("0"); }
 			}
+		case '$':
+			if (a.value.matches(b.value))
+			{return new ScriptVariable("1");}
+			else {return new ScriptVariable("0");}
+		case '@':
+			try {
+				return new ScriptVariable(String.valueOf(a.value.charAt(Integer.valueOf(b.value))));
+			} catch (NumberFormatException e) {
+				return new ScriptVariable("");
+			}
+		case '_':
+			return new ScriptVariable(a.value + b.value);
 		case '>':
 			if (type == 1)
 			{
@@ -213,14 +250,11 @@ public class ScriptVariable {
 			{
 				return new ScriptVariable("");
 			}
-		case '"':
-			if (a.value.matches(b.value))
-			{return new ScriptVariable("1");}
-			else {return new ScriptVariable("0");}
 		default:
-			return new ScriptVariable("");
+			throw new IllegalArgumentException();
 		}
 	}
+
 	private static Object typeof(String a, String b)
 	{
 		if ((a == null) | (b == null))
