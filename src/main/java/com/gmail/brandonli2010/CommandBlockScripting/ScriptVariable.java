@@ -15,20 +15,7 @@ public class ScriptVariable {
 		{
 			throw new NullPointerException();
 		}
-		int type = 0;
-		Object typecheck = ScriptVariable.typeof(a.value, b.value);
-		if (typecheck instanceof Integer)
-		{
-			type = 1;
-		}
-		if (typecheck instanceof Double)
-		{
-			type = 2;
-		}
-		if (typecheck instanceof String)
-		{
-			type = 3;
-		}
+		int type = ScriptVariable.typeof(a.value, b.value);
 		switch(op)
 		{
 		case '+':
@@ -250,27 +237,33 @@ public class ScriptVariable {
 			{
 				return new ScriptVariable("");
 			}
+		case '?':
+			if (a.value.contains("."))
+			{
+				int decimal = a.value.indexOf('.');
+				try {
+					decimal = decimal + Integer.valueOf(b.value);
+				} catch (NumberFormatException e) {};
+				return new ScriptVariable(a.value.substring(0, decimal));
+			}
+			return new ScriptVariable("");
 		default:
 			throw new IllegalArgumentException();
 		}
 	}
 
-	private static Object typeof(String a, String b)
+	private static int typeof(String a, String b)
 	{
-		if ((a == null) | (b == null))
-		{
-			return "";
-		}
 		try {
 			Integer.valueOf(a);
 			Integer.valueOf(b);
-			return new Integer(0);
+			return 1;
 		} catch (NumberFormatException e){ }
 		try {
 			Double.valueOf(a);
 			Double.valueOf(b);
-			return new Double(0.0);
+			return 2;
 		} catch (NumberFormatException e){ }
-		return new String("");
+		return 0;
 	}
 }
