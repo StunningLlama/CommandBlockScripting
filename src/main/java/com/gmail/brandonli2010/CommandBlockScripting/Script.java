@@ -1,823 +1,165 @@
 package com.gmail.brandonli2010.CommandBlockScripting;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
 
 import org.bukkit.Bukkit;
-import org.bukkit.Difficulty;
-import org.bukkit.GameMode;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.World;
-import org.bukkit.WorldType;
-import org.bukkit.command.*;
-import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
+import org.bukkit.command.BlockCommandSender;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.plugin.java.JavaPlugin;
 
-public class Script
-{
+public class CommandBlockScripting extends JavaPlugin {
 
-	public Script(String init, CommandSender initblock, CommandBlockScripting instance)
+	@Override
+	public void onEnable()
 	{
-		this.script_str = init;
-		this.block = initblock;
-		this.script_arr = new ArrayList<String>();
-		this.server = instance;
-		this.labelmap = new HashMap<String, Integer>();
-		this.varmap = new HashMap<String, String>();
-	}
-
-	protected void Parse()
-	{
-		StringBuilder newscript = new StringBuilder(this.script_str + " ");
-		for (int ind = 0; ind < newscript.length(); ind ++)
+		if (CommandBlockScripting.savedvarmap == null)
 		{
-			if (newscript.charAt(ind) == ';')
-			{
-				newscript.replace(ind, ind + 1, "\u000c");
-			}
-			else if (newscript.charAt(ind) == '#')
-			{
-				newscript.replace(ind, ind + 1, "\u0005");
-			}
-			if (newscript.charAt(ind) == '\\')
-			{
-				newscript.replace(ind, ind, "");
-			}
+			CommandBlockScripting.savedvarmap = new HashMap<String, String>();
 		}
-		newscript = new StringBuilder(newscript.substring(0, newscript.length() - 1));
-		String[] args = newscript.toString().split("\u000c");
-		if (args.length == 0)
+		if (CommandBlockScripting.globalvarmap == null)
 		{
-			throw new InvalidScriptException("Script must have size!");
+			CommandBlockScripting.globalvarmap = new HashMap<String, String>();
 		}
-		for (int ind = 0; ind < args.length; ind ++)
+		this.saveDefaultConfig();
+		for (String str : this.getConfig().getConfigurationSection("variables").getKeys(false))
 		{
-			this.script_arr.add(args[ind]);
+			CommandBlockScripting.savedvarmap.put(str, this.getConfig().getString("variables." + str));
 		}
-		this.script_arr.add("\u0001\u0012\u001c0");
-		int brackets = 0;
-		List<Integer> levels = new ArrayList<Integer>();
-		for (int ind = 0; ind < this.script_arr.size(); ind ++)
+		this.scriptthreads = new ArrayList<ScriptThread>();
+		if (CommandBlockScripting.inputbuf == null)
 		{
-			levels.add(-1);
-		}
-		for (int ind = 0; ind < this.script_arr.size(); ind ++)
-		{
-			if (this.script_arr.get(ind).startsWith(":if ") | this.script_arr.get(ind).startsWith(":while "))
-			{
-				levels.set(ind, brackets);
-				brackets ++;
-			}
-			if (this.script_arr.get(ind).startsWith(":end "))
-			{
-				brackets --;
-				if (brackets < 0)
-				{
-					throw new InvalidScriptException("Unmatched closing keyword 'end' at line " + ind + ".");
-				}
-				levels.set(ind, brackets);
-			}
-			if (this.script_arr.get(ind).startsWith(":else "))
-			{
-				brackets --;
-				if (ind < 0)
-				{
-					throw new InvalidScriptException("Unmatched keyword 'else' at line " + ind + ".");
-				}
-				levels.set(ind, brackets);
-				brackets ++;
-			}
-			if (this.script_arr.get(ind).startsWith(":break "))
-			{
-				levels.set(ind, brackets);
-			}
-		}
-		if (brackets > 0)
-		{
-			throw new InvalidScriptException("Unbalanced control structure at line " + (this.script_arr.size() - 1) + ".");
-		}
-		List<String> temp_script_arr = new ArrayList<String>();
-		for (int ind = 0; ind < this.script_arr.size(); ind ++)
-		{
-			temp_script_arr.add(this.script_arr.get(ind));
-		}
-		for (int ind = 0; ind < this.script_arr.size(); ind ++)
-		{
-			if (this.script_arr.get(ind).startsWith(":end ") | this.script_arr.get(ind).startsWith(":else "))
-			{
-				for (int indn = ind; indn < this.script_arr.size(); indn ++)
-				{
-					if (this.script_arr.get(indn).startsWith(":end ") & levels.get(ind).equals(levels.get(indn)))
-					{
-						temp_script_arr.set(ind, "\u0001\u0011\u001c" + (indn + 1) + "\u001c0");
-						break;
-					}
-				}
-				for (int indn = ind; indn > -1; indn --)
-				{
-					if ((this.script_arr.get(indn).startsWith(":while ") | this.script_arr.get(indn).startsWith(":if ")) & levels.get(ind).equals(levels.get(indn)))
-					{
-						if (this.script_arr.get(indn).startsWith(":while "))
-						{
-							temp_script_arr.set(ind, "\u0001\u0011\u001c" + indn + "\u001c0");
-						}
-						break;
-					}
-				}
-			}
-			if (this.script_arr.get(ind).startsWith(":if ") | this.script_arr.get(ind).startsWith(":while "))
-			{
-				for (int indn = ind; indn < this.script_arr.size(); indn ++)
-				{
-					if ((this.script_arr.get(indn).startsWith(":else ") | this.script_arr.get(indn).startsWith(":end ")) & levels.get(ind).equals(levels.get(indn)))
-					{
-						temp_script_arr.set(ind, "\u0001\u0011\u001c" + (indn + 1) + "\u001c" + this.FirstArg(this.script_arr.get(ind)));
-						break;
-					}
-				}
-			}
-			if (this.script_arr.get(ind).startsWith(":break "))
-			{
-				int lvl = 0;
-				try {
-					lvl = levels.get(ind) - Integer.valueOf(this.FirstArg(this.script_arr.get(ind)));
-				} catch (NumberFormatException e) { }
-				if ((lvl < 0) | (Integer.valueOf(this.FirstArg(this.script_arr.get(ind))) <= 0)) {lvl = 0;}
-				for (int indn = ind; indn < this.script_arr.size(); indn ++)
-				{
-					if (this.script_arr.get(indn).startsWith(":end ") & levels.get(indn).equals(lvl))
-					{
-						temp_script_arr.set(ind, "\u0001\u0011\u001c" + (indn + 1) + "\u001c0");
-					}
-				}
-			}
-		}
-		this.script_arr = temp_script_arr;
-		for (int ind = 0; ind < this.script_arr.size(); ind ++)
-		{
-			if (this.script_arr.get(ind).startsWith(":label "))
-			{
-				labelmap.put(this.FirstArg(this.script_arr.get(ind)), ind + 1);
-			}
-		}
-		for (int ind = 0; ind < this.script_arr.size(); ind ++)
-		{
-			if (this.script_arr.get(ind).startsWith(":goto "))
-			{
-				this.script_arr.set(ind, "\u0001\u0013\u001c" + this.labelmap.get(this.FirstArg(this.script_arr.get(ind))));
-			}
-			if (this.script_arr.get(ind).startsWith(":jump "))
-			{
-				this.script_arr.set(ind, "\u0001\u0011\u001c" + this.FirstArg(this.script_arr.get(ind)) + "\u001c0");
-			}
-			if (this.script_arr.get(ind).startsWith(":var "))
-			{
-				this.script_arr.set(ind, "\u0001\u0014\u001c" + this.FirstArg(this.script_arr.get(ind)));
-			}
-			if (this.script_arr.get(ind).startsWith(":wait "))
-			{
-				this.script_arr.set(ind, "\u0001\u0015\u001c" + this.FirstArg(this.script_arr.get(ind)));
-			}
-			if (this.script_arr.get(ind).startsWith(":iterator "))
-			{
-				this.script_arr.set(ind, "\u0001\u0016\u001c" + this.FirstArg(this.script_arr.get(ind)));
-			}
-			if (this.script_arr.get(ind).startsWith(":exit "))
-			{
-				this.script_arr.set(ind, "\u0001\u0012\u001c" + this.FirstArg(this.script_arr.get(ind)));
-			}
-		}
-		for (int ind = 0; ind < this.script_arr.size(); ind ++)
-		{
-			if (this.script_arr.get(ind).startsWith(":"))
-			{
-				this.script_arr.set(ind, "\u0001\u0018\u001c");
-			}
+			CommandBlockScripting.inputbuf = new LinkedList<String>();
 		}
 	}
 
-	private String parseLine(String str)
+	@Override
+	public void onDisable()
 	{
-		boolean inexp = false;
-		StringBuilder tmpexp = new StringBuilder("");
-		StringBuilder finishedstr = new StringBuilder("");
-		for (int ind = 0; ind < str.length(); ind ++)
-		{
-			if (str.charAt(ind) == '\u0005')
-			{
-				if (inexp)
-				{
-					finishedstr.append(this.parseExpression(tmpexp.toString()));
-					tmpexp = new StringBuilder("");
-				}
-				inexp = !inexp;
-			}
-			else if (inexp)
-			{
-				tmpexp.append(str.charAt(ind));
-			}
-			else
-			{
-				finishedstr.append(str.charAt(ind));
-			}
+		for (Map.Entry<String, String> entry : savedvarmap.entrySet()) {
+		    getConfig().set("variables." + entry.getKey(), entry.getValue());
 		}
-		return finishedstr.toString();
+		this.saveConfig();
 	}
 
-	private String parseExpression(String str)
+	@Override
+	public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args)
 	{
-		StringBuilder tmpvar = new StringBuilder("");
-		boolean invar = false;
-		Stack<ScriptVariable> varstack = new Stack<ScriptVariable>();
-		int brackets = 0;
-		for (int ind = 0; ind < str.length(); ind ++)
+		if (cmd.getName().equalsIgnoreCase("stopscripts"))
 		{
-			if (str.charAt(ind) == '{')
-			{
-				brackets ++;
-			}
-			if (str.charAt(ind) == '}')
-			{
-				brackets --;
-				if (brackets < 0)
-				{
-					this.errorlvl = 1;
-					return "";
-				}
-			}
+			Integer[] totalthreads = this.killthreads();
+			sender.sendMessage("\u00a74Killed " + totalthreads[1] + " running script(s) out of a total " + totalthreads[0] + " scripts.");
+			return true;
 		}
-		if (brackets != 0)
+		if (cmd.getName().equalsIgnoreCase("input"))
 		{
-			this.errorlvl = 1;
-			return "";
+			StringBuilder script = new StringBuilder("");
+			for (int ind = 0; ind < args.length; ind ++)
+			{
+				script.append(args[ind]);
+				script.append(' ');
+			}
+			CommandBlockScripting.inputbuf.add(script.substring(0, script.length() - 1));
+			return true;
 		}
-		brackets = 0;
-		for (int ind = 0; ind < str.length(); ind ++)
+		if (cmd.getName().equalsIgnoreCase("output"))
 		{
-			if (str.charAt(ind) == '{')
+			if ((!(sender instanceof BlockCommandSender)) & (!(sender instanceof ConsoleCommandSender)))
 			{
-				if (brackets > 0)
-				{
-					tmpvar.append("\u0002");
-				}
-				brackets ++;
-				invar = true;
+				sender.sendMessage("\u00a74You must be a command block or the console.");
+				return true;
 			}
-			else if (str.charAt(ind) == '}')
+			if (args.length < 2)
 			{
-				brackets --;
-				if (brackets == 0)
-				{
-					varstack.push(new ScriptVariable(processVarExp(tmpvar.toString())));
-					tmpvar = new StringBuilder("");
-					invar = !invar;
-				}
-				else
-				{
-					tmpvar.append("\u0003");
-				}
+				return false;
 			}
-			else if (invar)
+			StringBuilder msg = new StringBuilder("");
+			for (int ind = 1; ind < args.length; ind ++)
 			{
-				tmpvar.append(str.charAt(ind));
+				msg.append(args[ind]);
+				msg.append(' ');
 			}
-			else
+			msg = new StringBuilder(msg.substring(0, msg.length() - 1));
+			if (!args[0].equals(""))
 			{
-				if (varstack.size() < 2)
-				{
-					varstack.push(new ScriptVariable(""));
-				}
-				else
-				{
-					ScriptVariable a = varstack.pop();
-					ScriptVariable b = varstack.pop();
-					try {
-						varstack.push(ScriptVariable.performOp(str.charAt(ind), a, b));
-					} catch (IllegalArgumentException e) {varstack.push(a); varstack.push(b);
-					} catch (NullPointerException e) {varstack.push(new ScriptVariable("")); this.errorlvl = 1;}
-				}
+				msg = new StringBuilder(msg.toString().replace(args[0], "\u00a7"));
 			}
+			Bukkit.broadcastMessage(msg.toString());
 		}
-		if (varstack.empty())
+		if (cmd.getName().equalsIgnoreCase("script"))
 		{
-			this.errorlvl = 1;
-			return "";
+			if ((!(sender instanceof BlockCommandSender)) & (!(sender instanceof ConsoleCommandSender)))
+			{
+				sender.sendMessage("\u00a74You must be a command block or the console.");
+				return true;
+			}
+			StringBuilder script = new StringBuilder("");
+			for (int ind = 0; ind < args.length; ind ++)
+			{
+				script.append(args[ind]);
+				script.append(' ');
+			}
+			Script thisscript = new Script(script.substring(0, script.length() - 2), sender, this);
+			try {
+				thisscript.Parse();
+			} catch(InvalidScriptException e) {
+				this.getLogger().info("Error parsing script: " + e.getDescription());
+				return true;
+			}
+			this.getLogger().info("Done parsing.");
+			ScriptThread st = new ScriptThread(thisscript, this);
+			this.scriptthreads.add(st);
+			st.start();
+			return true;
 		}
-		return varstack.peek().value;
+		return false;
 	}
 
-	protected int run()
+	private Integer[] killthreads()
 	{
-		this.errorlvl = 0;
-		this.iteratorindex = 0;
-		this.interrupted = false;
-		int index = 0;
-		String parsedline = "";
+		int len = this.scriptthreads.size();
+		int running = 0;
+		for (int ind = 0; ind < this.scriptthreads.size(); ind ++)
+		{
+			if (this.scriptthreads.get(ind).isRunningScript())
+			{
+				running ++;
+			}
+			this.scriptthreads.get(ind).interrupt();
+		}
+		Integer[] toreturn = {len, running};
+		this.scriptthreads.clear();
+		return toreturn;
+	}
+
+	protected synchronized String getInput() throws InterruptedException
+	{
 		while (true)
 		{
-			if (Thread.currentThread().isInterrupted() | this.interrupted)
+			if (Thread.currentThread().isInterrupted())
 			{
-				return -1;
+				throw new InterruptedException();
 			}
-			if (index > this.script_arr.size() - 1)
+			Thread.sleep(1);
+			
+			if (CommandBlockScripting.inputbuf.size() > 0)
 			{
-				return -2;
+				break;
 			}
-			parsedline = this.script_arr.get(index);
-			if (parsedline.startsWith("\u0001"))
-			{
-				if (parsedline.startsWith("\u0001\u0011"))
-				{
-					parsedline = parseLine(this.script_arr.get(index));
-					if (parsedline.split("\u001c")[2].equals("0"))
-					{
-						try {
-							index = Integer.valueOf(parsedline.split("\u001c")[1]);
-						} catch(NumberFormatException e) {
-							return -3;
-						}
-					}
-					else
-					{
-						index ++;
-					}
-				}
-				if (parsedline.startsWith("\u0001\u0012"))
-				{
-					parsedline = parseLine(this.script_arr.get(index));
-					try {
-						return Integer.valueOf(parsedline.split("\u001c")[1]);
-					} catch(NumberFormatException e) {
-						return -3;
-					}
-				}
-				if (parsedline.startsWith("\u0001\u0013"))
-				{
-					parsedline = parseLine(this.script_arr.get(index));
-					try {
-						index = Integer.valueOf(parsedline.split("\u001c")[1]);
-						if ((index < 0) | (index >= this.script_arr.size()))
-						{
-							return -2;
-						}
-					} catch(NumberFormatException e) {
-						return -3;
-					}
-				}
-				if (parsedline.startsWith("\u0001\u0014"))
-				{
-					String var = this.parseLine(parsedline.split("\u001c")[1].split(" ")[0]);
-					String val = this.parseLine(parsedline.split("\u001c")[1].split(" ")[1]);
-					if (var.matches("[a-zA-Z0-9\\-\\_]+"))
-					{
-						if (var.startsWith("__"))
-						{
-							CommandBlockScripting.savedvarmap.put(var, val);
-						}
-						else if (var.startsWith("_"))
-						{
-							CommandBlockScripting.globalvarmap.put(var, val);
-						}
-						else
-						{
-							varmap.put(var, val);
-						}
-					}
-					index ++;
-				}
-				if (parsedline.startsWith("\u0001\u0015"))
-				{
-					parsedline = parseLine(this.script_arr.get(index));
-					int millis = 0;
-					try {
-						millis = Integer.valueOf(parsedline.split("\u001c")[1]);
-					} catch(NumberFormatException e) {millis = -1;}
-					if (millis != -1)
-					{
-						try {
-							Thread.sleep(millis);
-						} catch (InterruptedException e) {return -1;}
-					}
-					index ++;
-				}
-				if (parsedline.startsWith("\u0001\u0016"))
-				{
-					if (this.script_arr.get(index).split("\u001c")[1].equals("get"))
-					{
-						this.iteratorindex = this.iteratorindex + 1;
-					}
-					if (this.script_arr.get(index).split("\u001c")[1].equals("reset"))
-					{
-						this.iteratorindex = 0;
-					}
-				}
-			}
-			else
-			{
-				parsedline = parseLine(this.script_arr.get(index));
-				this.server.getServer().dispatchCommand(block, parsedline);
-				index ++;
-			}
-			this.errorlvl = 0;
 		}
+		notify();
+		return CommandBlockScripting.inputbuf.poll();
 	}
 
-	private String processVarExp(String str)
-	{
-		StringBuilder tmpvar = new StringBuilder("");
-		StringBuilder finished = new StringBuilder("");
-		StringBuilder ref = new StringBuilder(str);
-		int brackets = 0;
-		for (int ind = 0; ind < ref.length(); ind ++)
-		{
-			if (ref.charAt(ind) == '\u0002')
-			{
-				if (brackets == 0)
-				{
-					tmpvar = new StringBuilder("");
-				}
-				else
-				{
-					tmpvar.append('\u0002');
-				}
-				brackets ++;
-			}
-			else if (ref.charAt(ind) == '\u0003')
-			{
-				brackets --;
-				if (brackets == 0)
-				{
-					finished.append(this.processVarExp(tmpvar.toString()));
-				}
-				else
-				{
-					tmpvar.append('\u0003');
-				}
-			}
-			else if (brackets != 0)
-			{
-				tmpvar.append(ref.charAt(ind));
-			}
-			else if (brackets == 0)
-			{
-				finished.append(ref.charAt(ind));
-			}
-		}
-		return this.processVar(finished.toString());
-	}
-
-	@SuppressWarnings("deprecation")
-	private String processVar(String str)
-	{
-		if (str.startsWith("~~"))
-		{
-			return str.substring(2);
-		}
-		else if (str.startsWith("~"))
-		{
-			String[] env = str.substring(1).split("\\.");
-			if (env[0].equals("in"))
-			{
-				try {
-					return this.server.getInput();
-				} catch (InterruptedException e) {
-					this.interrupted = true;
-				}
-			}
-			if (env[0].equals("env"))
-			{
-				if (env[1].equals("errorlvl"))
-				{
-					return String.valueOf(this.errorlvl);
-				}
-				if (env[1].equals("random"))
-				{
-					return String.valueOf(Math.random());
-				}
-				if (env[1].equals("uuid"))
-				{
-					long id = CommandBlockScripting.UUID;
-					CommandBlockScripting.UUID ++;
-					return String.valueOf(id);
-				}
-				this.errorlvl = 1;
-				return "";
-			}
-			if (env[0].equals("pl") | env[0].equals("p") | env[0].equals("it"))
-			{
-				Player playertarget = null;
-				if (env[0].equals("p"))
-				{
-					playertarget = Bukkit.getPlayer(env[1]);
-				}
-				if (env[0].equals("it"))
-				{
-					if (this.iteratorindex < Bukkit.getOnlinePlayers().length)
-					{
-						playertarget = Bukkit.getOnlinePlayers()[this.iteratorindex];
-					}
-					else
-					{
-						this.errorlvl = 1;
-						return "";
-					}
-				}
-				if (env[0].equals("pl") & (block instanceof BlockCommandSender))
-				{
-					BlockCommandSender blocksender = (BlockCommandSender) this.block;
-					if (env[1].equals("np"))
-					{
-						Double shortestd = Double.POSITIVE_INFINITY;
-						Player finalp = null;
-						for (Player p : Bukkit.getOnlinePlayers())
-						{
-							if (blocksender.getBlock().getWorld().equals(p.getWorld()) && (blocksender.getBlock().getLocation().distanceSquared(p.getLocation()) < shortestd))
-							{
-								shortestd = blocksender.getBlock().getLocation().distanceSquared(p.getLocation());
-								finalp = p;
-							}
-						}
-						playertarget = finalp;
-					}
-					if (env[1].equals("fp"))
-					{
-						Double longestd = 0.0;
-						Player finalp = null;
-						for (Player p : Bukkit.getOnlinePlayers())
-						{
-							if (blocksender.getBlock().getWorld().equals(p.getWorld()) && (blocksender.getBlock().getLocation().distanceSquared(p.getLocation()) > longestd))
-							{
-								longestd = blocksender.getBlock().getLocation().distanceSquared(p.getLocation());
-								finalp = p;
-							}
-						}
-						playertarget = finalp;
-					}
-					if (env[1].equals("rp"))
-					{
-						if (Bukkit.getOnlinePlayers().length > 0)
-						{
-							Random r = new Random();
-							playertarget = Bukkit.getOnlinePlayers()[r.nextInt(Bukkit.getOnlinePlayers().length)];
-						}
-					}
-				}
-				if (playertarget == null) {this.errorlvl = 1; return "";}
-				String playerreturn = "";
-				if (env[2].equals("flying"))
-				{
-					if (playertarget.isFlying()) {return "1";}
-					else {return "0";}
-				}
-				if (env[2].equals("sneaking"))
-				{
-					if (playertarget.isSneaking()) {return "1";}
-					else {return "0";}
-				}
-				if (env[2].equals("sprinting"))
-				{
-					if (playertarget.isSprinting()) {return "1";}
-					else {return "0";}
-				}
-				if (env[2].equals("blocking"))
-				{
-					if (playertarget.isBlocking()) {return "1";}
-					else {return "0";}
-				}
-				if (env[2].equals("sleeping"))
-				{
-					if (playertarget.isSleeping()) {return "1";}
-					else {return "0";}
-				}
-				if (env[2].equals("hunger"))
-				{
-					return String.valueOf(playertarget.getFoodLevel());
-				}
-				if (env[2].equals("exp"))
-				{
-					return String.valueOf((int) playertarget.getExp());
-				}
-				if (env[2].equals("fall"))
-				{
-					return String.valueOf((int) playertarget.getFallDistance());
-				}
-				if (env[2].equals("gamemode"))
-				{
-					if (playertarget.getGameMode() == GameMode.SURVIVAL) {playerreturn = "0";}
-					if (playertarget.getGameMode() == GameMode.CREATIVE) {playerreturn = "1";}
-					if (playertarget.getGameMode() == GameMode.ADVENTURE) {playerreturn = "2";}
-					return playerreturn;
-				}
-				if (env[2].equals("health"))
-				{
-					return String.valueOf((int) playertarget.getHealth());
-				}
-				if (env[2].equals("level"))
-				{
-					return String.valueOf(playertarget.getLevel());
-				}
-				if (env[2].equals("air"))
-				{
-					return String.valueOf(playertarget.getRemainingAir());
-				}
-				if (env[2].equals("item") | env[2].equals("inv"))
-				{
-					ItemStack itemtarget = new ItemStack(Material.AIR);
-					if (env[2].equals("item"))
-					{
-						if (env[3].equals("hand"))
-						{
-							itemtarget = playertarget.getItemInHand();
-						}
-					}
-					if (env[2].equals("inv"))
-					{
-						try {
-							itemtarget = playertarget.getInventory().getItem(Integer.valueOf(env[3]));
-						} catch(NumberFormatException e) {}
-					}
-					if (itemtarget == null) {this.errorlvl = 1; return "";}
-					if (env[4].equals("type"))
-					{
-						return String.valueOf(playertarget.getItemInHand().getTypeId());
-					}
-					if (env[4].equals("data"))
-					{
-						return String.valueOf(playertarget.getItemInHand().getData().getData());
-					}
-					if (env[4].equals("amount"))
-					{
-						return String.valueOf(playertarget.getItemInHand().getAmount());
-					}
-				}
-				if (env[2].equals("bx"))
-				{
-					return String.valueOf(playertarget.getLocation().getBlockX());
-				}
-				if (env[2].equals("by"))
-				{
-					return String.valueOf(playertarget.getLocation().getBlockY());
-				}
-				if (env[2].equals("bz"))
-				{
-					return String.valueOf(playertarget.getLocation().getBlockZ());
-				}
-				if (env[2].equals("x"))
-				{
-					return String.valueOf(playertarget.getLocation().getX());
-				}
-				if (env[2].equals("y"))
-				{
-					return String.valueOf(playertarget.getLocation().getY());
-				}
-				if (env[2].equals("z"))
-				{
-					return String.valueOf(playertarget.getLocation().getZ());
-				}
-			}
-			if (env[0].equals("wl") | env[0].equals("w"))
-			{
-				World worldtarget = Bukkit.getWorlds().get(0);
-				if (env[0].equals("w"))
-				{
-					worldtarget = Bukkit.getWorld(env[1]);
-				}
-				if (env[0].equals("wl") & (this.block instanceof BlockCommandSender))
-				{
-					if (env[1].equals("cw"))
-					{
-						worldtarget = ((BlockCommandSender) this.block).getBlock().getWorld();
-					}
-				}
-				if (worldtarget == null) {this.errorlvl = 1; return "";}
-				String worldreturn = "";
-				Location loc;
-				if (env[2].equals("difficulty"))
-				{
-					if (worldtarget.getDifficulty() == Difficulty.PEACEFUL) {worldreturn = "0";}
-					if (worldtarget.getDifficulty() == Difficulty.EASY) {worldreturn = "1";}
-					if (worldtarget.getDifficulty() == Difficulty.NORMAL) {worldreturn = "2";}
-					if (worldtarget.getDifficulty() == Difficulty.HARD) {worldreturn = "3";}
-					return worldreturn;
-				}
-				if (env[2].equals("time"))
-				{
-					return String.valueOf(worldtarget.getTime());
-				}
-				if (env[2].equals("players"))
-				{
-					return String.valueOf(worldtarget.getPlayers().size());
-				}
-				if (env[2].equals("type"))
-				{
-					if (worldtarget.getWorldType() == WorldType.NORMAL) {worldreturn = "0";}
-					if (worldtarget.getWorldType() == WorldType.FLAT) {worldreturn = "1";}
-					if (worldtarget.getWorldType() == WorldType.LARGE_BIOMES) {worldreturn = "2";}
-					return worldreturn;
-				}
-				if (env[2].equals("weather"))
-				{
-					if ((!worldtarget.hasStorm()) & (!worldtarget.isThundering())) {worldreturn = "0";}
-					if (worldtarget.hasStorm() & (!worldtarget.isThundering())) {worldreturn = "1";}
-					if (worldtarget.hasStorm() & worldtarget.isThundering()) {worldreturn = "2";}
-					if ((!worldtarget.hasStorm()) & worldtarget.isThundering()) {worldreturn = "3";}
-					return worldreturn;
-				}
-				if (env[2].equals("seed"))
-				{
-					return String.valueOf(worldtarget.getSeed());
-				}
-				if (env[2].equals("blocktype"))
-				{
-					if (env.length != 6)
-					{
-						this.errorlvl = 1;
-						return "";
-					}
-					try {
-						if (this.block instanceof BlockCommandSender)
-						{
-							loc = new Location(((BlockCommandSender) this.block).getBlock().getWorld(), Double.valueOf(env[3]), Double.valueOf(env[4]), Double.valueOf(env[5]));
-						}
-						else
-						{
-							loc = new Location(Bukkit.getWorlds().get(0), Double.valueOf(env[3]), Double.valueOf(env[4]), Double.valueOf(env[5]));
-						}
-					} catch(NumberFormatException e) {
-						this.errorlvl = 1;
-						return "";
-					}
-					return String.valueOf(worldtarget.getBlockAt(loc).getTypeId());
-				}
-				if (env[2].equals("blockdata"))
-				{
-					if (env.length != 6)
-					{
-						this.errorlvl = 1;
-						return "";
-					}
-					try {
-						if (this.block instanceof BlockCommandSender)
-						{
-							loc = new Location(((BlockCommandSender) this.block).getBlock().getWorld(), Double.valueOf(env[3]), Double.valueOf(env[4]), Double.valueOf(env[5]));
-						}
-						else
-						{
-							loc = new Location(Bukkit.getWorlds().get(0), Double.valueOf(env[3]), Double.valueOf(env[4]), Double.valueOf(env[5]));
-						}
-					} catch(NumberFormatException e) {
-						this.errorlvl = 1;
-						return "";
-					}
-					return String.valueOf(worldtarget.getBlockAt(loc).getData());
-				}
-			}
-		}
-		else if (str.startsWith("__"))
-		{
-			return CommandBlockScripting.savedvarmap.get(str);
-		}
-		else if (str.startsWith("_"))
-		{
-			return CommandBlockScripting.globalvarmap.get(str);
-		}
-		else
-		{
-			return varmap.get(str);
-		}
-		this.errorlvl = 1;
-		return "";
-	}
-
-	private String FirstArg(String str)
-	{
-		for (int ind = 0; ind < str.length(); ind ++)
-		{
-			if (str.charAt(ind) == ' ')
-			{
-				if (ind == (str.length() - 1))
-				{
-					this.errorlvl = 1;
-					return "";
-				}
-				return str.substring(ind + 1);
-			}
-		}
-		return "";
-	}
-
-	protected Thread getThread()
-	{
-		return Thread.currentThread();
-	}
-
-	private CommandBlockScripting server;
-	private CommandSender block;
-	private String script_str;
-	private List<String> script_arr;
-	private HashMap<String, String> varmap;
-	private HashMap<String, Integer> labelmap;
-	private boolean interrupted;
-	private int iteratorindex;
-	private int errorlvl;
+	protected static HashMap<String, String> globalvarmap;
+	protected static HashMap<String, String> savedvarmap;
+	private List<ScriptThread> scriptthreads;
+	private static Queue<String> inputbuf;
+	protected static long UUID = 0;
 }
