@@ -13,7 +13,8 @@ import org.bukkit.command.*;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
-public class Script {
+public class Script
+{
 
 	public Script(String init, CommandSender initblock, CommandBlockScripting instance)
 	{
@@ -24,32 +25,27 @@ public class Script {
 		this.labelmap = new HashMap<String, Integer>();
 		this.varmap = new HashMap<String, String>();
 	}
-/*===================================================================================*\
-|*===================================PARSE===========================================*|
-\*===================================================================================*/
-	public void Parse()
+
+	protected void Parse()
 	{
 		StringBuilder newscript = new StringBuilder(this.script_str + " ");
 		for (int ind = 0; ind < newscript.length(); ind ++)
 		{
 			if (newscript.charAt(ind) == ';')
 			{
-				newscript.replace(ind, ind + 1, "\u0002");
+				newscript.replace(ind, ind + 1, "\u000c");
 			}
-			else
+			else if (newscript.charAt(ind) == '#')
 			{
-				if (newscript.charAt(ind) == '#')
-				{
-					newscript.replace(ind, ind + 1, "\u0005");
-				}
-				if (newscript.charAt(ind) == '\\')
-				{
-					newscript.delete(ind, ind + 1);
-				}
+				newscript.replace(ind, ind + 1, "\u0005");
+			}
+			if (newscript.charAt(ind) == '\\')
+			{
+				newscript.replace(ind, ind, "");
 			}
 		}
 		newscript = new StringBuilder(newscript.substring(0, newscript.length() - 1));
-		String[] args = newscript.toString().split("\u0002");
+		String[] args = newscript.toString().split("\u000c");
 		if (args.length == 0)
 		{
 			throw new InvalidScriptException("Script must have size!");
@@ -182,6 +178,10 @@ public class Script {
 			{
 				this.script_arr.set(ind, "\u0001\u0015\u001c" + this.FirstArg(this.script_arr.get(ind)));
 			}
+			if (this.script_arr.get(ind).startsWith(":iterator "))
+			{
+				this.script_arr.set(ind, "\u0001\u0016\u001c" + this.FirstArg(this.script_arr.get(ind)));
+			}
 			if (this.script_arr.get(ind).startsWith(":exit "))
 			{
 				this.script_arr.set(ind, "\u0001\u0012\u001c" + this.FirstArg(this.script_arr.get(ind)));
@@ -195,10 +195,8 @@ public class Script {
 			}
 		}
 	}
-/*===================================================================================*\
-|*===================================PARSEEXP========================================*|
-\*===================================================================================*/
-	private String parseExp(String str)
+
+	private String parseLine(String str)
 	{
 		boolean inexp = false;
 		StringBuilder tmpexp = new StringBuilder("");
@@ -209,7 +207,7 @@ public class Script {
 			{
 				if (inexp)
 				{
-					finishedstr.append(this.parseSingularExp(tmpexp.toString()));
+					finishedstr.append(this.parseExpression(tmpexp.toString()));
 					tmpexp = new StringBuilder("");
 				}
 				inexp = !inexp;
@@ -225,24 +223,59 @@ public class Script {
 		}
 		return finishedstr.toString();
 	}
-/*===================================================================================*\
-|*===================================PARSESINGULAREXP================================*|
-\*===================================================================================*/
-	private String parseSingularExp(String str)
+
+	private String parseExpression(String str)
 	{
 		StringBuilder tmpvar = new StringBuilder("");
 		boolean invar = false;
 		Stack<ScriptVariable> varstack = new Stack<ScriptVariable>();
+		int brackets = 0;
 		for (int ind = 0; ind < str.length(); ind ++)
 		{
-			if (str.charAt(ind) == '%')
+			if (str.charAt(ind) == '{')
 			{
-				if (invar)
+				brackets ++;
+			}
+			if (str.charAt(ind) == '}')
+			{
+				brackets --;
+				if (brackets < 0)
 				{
-					varstack.push(new ScriptVariable(ScanVar(tmpvar.toString())));
-					tmpvar = new StringBuilder("");
+					this.errorlvl = 1;
+					return "";
 				}
-				invar = !invar;
+			}
+		}
+		if (brackets != 0)
+		{
+			this.errorlvl = 1;
+			return "";
+		}
+		brackets = 0;
+		for (int ind = 0; ind < str.length(); ind ++)
+		{
+			if (str.charAt(ind) == '{')
+			{
+				if (brackets > 0)
+				{
+					tmpvar.append("\u0002");
+				}
+				brackets ++;
+				invar = true;
+			}
+			else if (str.charAt(ind) == '}')
+			{
+				brackets --;
+				if (brackets == 0)
+				{
+					varstack.push(new ScriptVariable(processVarExp(tmpvar.toString())));
+					tmpvar = new StringBuilder("");
+					invar = !invar;
+				}
+				else
+				{
+					tmpvar.append("\u0003");
+				}
 			}
 			else if (invar)
 			{
@@ -256,21 +289,27 @@ public class Script {
 				}
 				else
 				{
-					varstack.push(ScriptVariable.performOp(str.charAt(ind), varstack.pop(), varstack.pop()));
+					ScriptVariable a = varstack.pop();
+					ScriptVariable b = varstack.pop();
+					try {
+						varstack.push(ScriptVariable.performOp(str.charAt(ind), a, b));
+					} catch (IllegalArgumentException e) {varstack.push(a); varstack.push(b);
+					} catch (NullPointerException e) {varstack.push(new ScriptVariable("")); this.errorlvl = 1;}
 				}
 			}
 		}
 		if (varstack.empty())
 		{
+			this.errorlvl = 1;
 			return "";
 		}
 		return varstack.peek().value;
 	}
-/*===================================================================================*\
-|*====================================RUN============================================*|
-\*===================================================================================*/
-	public int run()
+
+	protected int run()
 	{
+		this.errorlvl = 0;
+		this.iteratorindex = 0;
 		this.interrupted = false;
 		int index = 0;
 		String parsedline = "";
@@ -289,7 +328,7 @@ public class Script {
 			{
 				if (parsedline.startsWith("\u0001\u0011"))
 				{
-					parsedline = parseExp(this.script_arr.get(index));
+					parsedline = parseLine(this.script_arr.get(index));
 					if (parsedline.split("\u001c")[2].equals("0"))
 					{
 						try {
@@ -305,7 +344,7 @@ public class Script {
 				}
 				if (parsedline.startsWith("\u0001\u0012"))
 				{
-					parsedline = parseExp(this.script_arr.get(index));
+					parsedline = parseLine(this.script_arr.get(index));
 					try {
 						return Integer.valueOf(parsedline.split("\u001c")[1]);
 					} catch(NumberFormatException e) {
@@ -314,7 +353,7 @@ public class Script {
 				}
 				if (parsedline.startsWith("\u0001\u0013"))
 				{
-					parsedline = parseExp(this.script_arr.get(index));
+					parsedline = parseLine(this.script_arr.get(index));
 					try {
 						index = Integer.valueOf(parsedline.split("\u001c")[1]);
 						if ((index < 0) | (index >= this.script_arr.size()))
@@ -327,9 +366,8 @@ public class Script {
 				}
 				if (parsedline.startsWith("\u0001\u0014"))
 				{
-					String val = this.FirstArg(parsedline);
-					val = this.parseExp(val);
-					String var = parsedline.split("\u001c")[1].split(" ")[0];
+					String var = this.parseLine(parsedline.split("\u001c")[1].split(" ")[0]);
+					String val = this.parseLine(parsedline.split("\u001c")[1].split(" ")[1]);
 					if (var.matches("[a-zA-Z0-9\\-\\_]+"))
 					{
 						if (var.startsWith("__"))
@@ -349,7 +387,7 @@ public class Script {
 				}
 				if (parsedline.startsWith("\u0001\u0015"))
 				{
-					parsedline = parseExp(this.script_arr.get(index));
+					parsedline = parseLine(this.script_arr.get(index));
 					int millis = 0;
 					try {
 						millis = Integer.valueOf(parsedline.split("\u001c")[1]);
@@ -362,20 +400,74 @@ public class Script {
 					}
 					index ++;
 				}
+				if (parsedline.startsWith("\u0001\u0016"))
+				{
+					if (this.script_arr.get(index).split("\u001c")[1].equals("get"))
+					{
+						this.iteratorindex = this.iteratorindex + 1;
+					}
+					if (this.script_arr.get(index).split("\u001c")[1].equals("reset"))
+					{
+						this.iteratorindex = 0;
+					}
+				}
 			}
 			else
 			{
-				parsedline = parseExp(this.script_arr.get(index));
+				parsedline = parseLine(this.script_arr.get(index));
 				this.server.getServer().dispatchCommand(block, parsedline);
 				index ++;
 			}
+			this.errorlvl = 0;
 		}
 	}
-/*===================================================================================*\
-|*===================================SCANVAR=========================================*|
-\*===================================================================================*/
+
+	private String processVarExp(String str)
+	{
+		StringBuilder tmpvar = new StringBuilder("");
+		StringBuilder finished = new StringBuilder("");
+		StringBuilder ref = new StringBuilder(str);
+		int brackets = 0;
+		for (int ind = 0; ind < ref.length(); ind ++)
+		{
+			if (ref.charAt(ind) == '\u0002')
+			{
+				if (brackets == 0)
+				{
+					tmpvar = new StringBuilder("");
+				}
+				else
+				{
+					tmpvar.append('\u0002');
+				}
+				brackets ++;
+			}
+			else if (ref.charAt(ind) == '\u0003')
+			{
+				brackets --;
+				if (brackets == 0)
+				{
+					finished.append(this.processVarExp(tmpvar.toString()));
+				}
+				else
+				{
+					tmpvar.append('\u0003');
+				}
+			}
+			else if (brackets != 0)
+			{
+				tmpvar.append(ref.charAt(ind));
+			}
+			else if (brackets == 0)
+			{
+				finished.append(ref.charAt(ind));
+			}
+		}
+		return this.processVar(finished.toString());
+	}
+
 	@SuppressWarnings("deprecation")
-	private String ScanVar(String str)
+	private String processVar(String str)
 	{
 		if (str.startsWith("~~"))
 		{
@@ -392,12 +484,43 @@ public class Script {
 					this.interrupted = true;
 				}
 			}
-			if (env[0].equals("pl") | env[0].equals("p"))
+			if (env[0].equals("env"))
+			{
+				if (env[1].equals("errorlvl"))
+				{
+					return String.valueOf(this.errorlvl);
+				}
+				if (env[1].equals("random"))
+				{
+					return String.valueOf(Math.random());
+				}
+				if (env[1].equals("uuid"))
+				{
+					long id = CommandBlockScripting.UUID;
+					CommandBlockScripting.UUID ++;
+					return String.valueOf(id);
+				}
+				this.errorlvl = 1;
+				return "";
+			}
+			if (env[0].equals("pl") | env[0].equals("p") | env[0].equals("it"))
 			{
 				Player playertarget = null;
 				if (env[0].equals("p"))
 				{
 					playertarget = Bukkit.getPlayer(env[1]);
+				}
+				if (env[0].equals("it"))
+				{
+					if (this.iteratorindex < Bukkit.getOnlinePlayers().length)
+					{
+						playertarget = Bukkit.getOnlinePlayers()[this.iteratorindex];
+					}
+					else
+					{
+						this.errorlvl = 1;
+						return "";
+					}
 				}
 				if (env[0].equals("pl") & (block instanceof BlockCommandSender))
 				{
@@ -439,7 +562,7 @@ public class Script {
 						}
 					}
 				}
-				if (playertarget == null) {return "";}
+				if (playertarget == null) {this.errorlvl = 1; return "";}
 				String playerreturn = "";
 				if (env[2].equals("flying"))
 				{
@@ -513,7 +636,7 @@ public class Script {
 							itemtarget = playertarget.getInventory().getItem(Integer.valueOf(env[3]));
 						} catch(NumberFormatException e) {}
 					}
-					if (itemtarget == null) {return "";}
+					if (itemtarget == null) {this.errorlvl = 1; return "";}
 					if (env[4].equals("type"))
 					{
 						return String.valueOf(playertarget.getItemInHand().getTypeId());
@@ -566,7 +689,7 @@ public class Script {
 						worldtarget = ((BlockCommandSender) this.block).getBlock().getWorld();
 					}
 				}
-				if (worldtarget == null) {return "";}
+				if (worldtarget == null) {this.errorlvl = 1; return "";}
 				String worldreturn = "";
 				Location loc;
 				if (env[2].equals("difficulty"))
@@ -608,6 +731,7 @@ public class Script {
 				{
 					if (env.length != 6)
 					{
+						this.errorlvl = 1;
 						return "";
 					}
 					try {
@@ -620,6 +744,7 @@ public class Script {
 							loc = new Location(Bukkit.getWorlds().get(0), Double.valueOf(env[3]), Double.valueOf(env[4]), Double.valueOf(env[5]));
 						}
 					} catch(NumberFormatException e) {
+						this.errorlvl = 1;
 						return "";
 					}
 					return String.valueOf(worldtarget.getBlockAt(loc).getTypeId());
@@ -628,6 +753,7 @@ public class Script {
 				{
 					if (env.length != 6)
 					{
+						this.errorlvl = 1;
 						return "";
 					}
 					try {
@@ -640,9 +766,10 @@ public class Script {
 							loc = new Location(Bukkit.getWorlds().get(0), Double.valueOf(env[3]), Double.valueOf(env[4]), Double.valueOf(env[5]));
 						}
 					} catch(NumberFormatException e) {
+						this.errorlvl = 1;
 						return "";
 					}
-					return "" + worldtarget.getBlockAt(loc).getData();
+					return String.valueOf(worldtarget.getBlockAt(loc).getData());
 				}
 			}
 		}
@@ -658,11 +785,10 @@ public class Script {
 		{
 			return varmap.get(str);
 		}
+		this.errorlvl = 1;
 		return "";
 	}
-/*===================================================================================*\
-|*===================================FIRSTARG========================================*|
-\*===================================================================================*/
+
 	private String FirstArg(String str)
 	{
 		for (int ind = 0; ind < str.length(); ind ++)
@@ -671,6 +797,7 @@ public class Script {
 			{
 				if (ind == (str.length() - 1))
 				{
+					this.errorlvl = 1;
 					return "";
 				}
 				return str.substring(ind + 1);
@@ -678,13 +805,12 @@ public class Script {
 		}
 		return "";
 	}
-/*===================================================================================*\
-|*===================================GETTHREAD=======================================*|
-\*===================================================================================*/
+
 	protected Thread getThread()
 	{
 		return Thread.currentThread();
 	}
+
 	private CommandBlockScripting server;
 	private CommandSender block;
 	private String script_str;
@@ -692,4 +818,6 @@ public class Script {
 	private HashMap<String, String> varmap;
 	private HashMap<String, Integer> labelmap;
 	private boolean interrupted;
+	private int iteratorindex;
+	private int errorlvl;
 }
