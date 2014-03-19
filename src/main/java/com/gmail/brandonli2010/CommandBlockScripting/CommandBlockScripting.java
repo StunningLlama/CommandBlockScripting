@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 
+import org.bukkit.Bukkit;
 import org.bukkit.command.BlockCommandSender;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -14,6 +15,8 @@ import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public class CommandBlockScripting extends JavaPlugin {
+
+	@Override
 	public void onEnable()
 	{
 		if (CommandBlockScripting.savedvarmap == null)
@@ -29,9 +32,11 @@ public class CommandBlockScripting extends JavaPlugin {
 		{
 			CommandBlockScripting.savedvarmap.put(str, this.getConfig().getString("variables." + str));
 		}
-		this.scriptthreads = new ArrayList<Thread>();
+		this.scriptthreads = new ArrayList<ScriptThread>();
 		CommandBlockScripting.inputbuf = new LinkedList<String>();
 	}
+
+	@Override
 	public void onDisable()
 	{
 		for (Map.Entry<String, String> entry : savedvarmap.entrySet()) {
@@ -39,11 +44,15 @@ public class CommandBlockScripting extends JavaPlugin {
 		}
 		this.saveConfig();
 	}
+
+	@Override
 	public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args)
 	{
 		if (cmd.getName().equalsIgnoreCase("stopscripts"))
 		{
-			sender.sendMessage("\u00a74Killed " + this.killthreads() + " script(s).");
+			Integer[] totalthreads = this.killthreads();
+			sender.sendMessage("\u00a74Killed " + totalthreads[1] + " running script(s) out of a total " + totalthreads[0] + " scripts.");
+			return true;
 		}
 		if (cmd.getName().equalsIgnoreCase("input"))
 		{
@@ -54,12 +63,38 @@ public class CommandBlockScripting extends JavaPlugin {
 				script.append(' ');
 			}
 			CommandBlockScripting.inputbuf.add(script.substring(0, script.length() - 1));
+			return true;
+		}
+		if (cmd.getName().equalsIgnoreCase("output"))
+		{
+			if ((!(sender instanceof BlockCommandSender)) & (!(sender instanceof ConsoleCommandSender)))
+			{
+				sender.sendMessage("\u00a74You must be a command block or the console.");
+				return true;
+			}
+			if (args.length < 2)
+			{
+				return false;
+			}
+			StringBuilder msg = new StringBuilder("");
+			for (int ind = 1; ind < args.length; ind ++)
+			{
+				msg.append(args[ind]);
+				msg.append(' ');
+			}
+			msg = new StringBuilder(msg.substring(0, msg.length() - 1));
+			if (!args[0].equals(""))
+			{
+				msg = new StringBuilder(msg.toString().replace(args[0], "\u00a7"));
+			}
+			Bukkit.broadcastMessage(msg.toString());
 		}
 		if (cmd.getName().equalsIgnoreCase("script"))
 		{
 			if ((!(sender instanceof BlockCommandSender)) & (!(sender instanceof ConsoleCommandSender)))
 			{
-				sender.sendMessage("You must be non-player.");
+				sender.sendMessage("\u00a74You must be a command block or the console.");
+				return true;
 			}
 			StringBuilder script = new StringBuilder("");
 			for (int ind = 0; ind < args.length; ind ++)
@@ -82,17 +117,25 @@ public class CommandBlockScripting extends JavaPlugin {
 		}
 		return false;
 	}
-	private int killthreads()
+
+	private Integer[] killthreads()
 	{
 		int len = this.scriptthreads.size();
+		int running = 0;
 		for (int ind = 0; ind < this.scriptthreads.size(); ind ++)
 		{
+			if (this.scriptthreads.get(ind).isRunningScript())
+			{
+				running ++;
+			}
 			this.scriptthreads.get(ind).interrupt();
 		}
+		Integer[] toreturn = {len, running};
 		this.scriptthreads.clear();
-		return len;
+		return toreturn;
 	}
-	protected synchronized String getInput () throws InterruptedException
+
+	protected synchronized String getInput() throws InterruptedException
 	{
 		while (true)
 		{
@@ -100,9 +143,7 @@ public class CommandBlockScripting extends JavaPlugin {
 			{
 				throw new InterruptedException();
 			}
-			try {
-				Thread.sleep(1);
-			} catch(InterruptedException e) {}
+			Thread.sleep(1);
 			if (CommandBlockScripting.inputbuf.size() > 0)
 			{
 				break;
@@ -111,8 +152,10 @@ public class CommandBlockScripting extends JavaPlugin {
 		notify();
 		return CommandBlockScripting.inputbuf.poll();
 	}
+
 	protected static HashMap<String, String> globalvarmap;
 	protected static HashMap<String, String> savedvarmap;
-	private List<Thread> scriptthreads;
+	private List<ScriptThread> scriptthreads;
 	private static Queue<String> inputbuf;
+	protected static long UUID = 0;
 }
